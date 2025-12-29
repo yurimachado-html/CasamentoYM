@@ -1,65 +1,61 @@
 import { db } from "./firebase.js";
-import {
-  collection,
-  doc,
-  setDoc,
-  deleteDoc,
-  onSnapshot
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { collection, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-/* ============================= VARIÁVEIS ============================= */
+/* =============================
+   VARIÁVEIS
+============================= */
 let convidados = [];
 let sentados = new Set();
-let senhaLiberada = false; // controla se a senha foi inserida corretamente
+let senhaAutorizada = false;
 
 const sentadosRef = collection(db, "sentados");
-const SENHA_CERIMONIA = "030126"; // troque conforme necessário
+const SENHA_CERIMONIA = "030126"; // troque depois
 
-/* ============================= UTILIDADES ============================= */
+/* =============================
+   UTILIDADES
+============================= */
 function normalizar(texto) {
-  return texto
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
+  return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
 function jaSentou(nome) {
   return sentados.has(nome);
 }
 
-/* ============================= FIREBASE – TEMPO REAL ============================= */
+/* =============================
+   FIREBASE – TEMPO REAL
+============================= */
 onSnapshot(sentadosRef, snapshot => {
   sentados.clear();
   snapshot.forEach(doc => sentados.add(doc.id));
-  atualizarTela();
+  if (senhaAutorizada && !document.getElementById("mesas").classList.contains("d-none")) {
+    mostrarMesas();
+  }
 });
 
-/* ============================= CARREGAR CONVIDADOS ============================= */
+/* =============================
+   CARREGAR CONVIDADOS
+============================= */
 fetch("JS/convidados.json")
   .then(r => r.json())
-  .then(data => {
-    convidados = data;
-    // não mostrar mesas automaticamente, só com senha
-  });
+  .then(data => convidados = data);
 
-/* ============================= CHECKBOX (SALVAR NO FIREBASE) ============================= */
+/* =============================
+   CHECKBOX (SALVAR NO FIREBASE)
+============================= */
 window.toggleSentado = async function (nome) {
   const ref = doc(db, "sentados", nome);
-  if (jaSentou(nome)) {
-    await deleteDoc(ref);
-  } else {
-    await setDoc(ref, { sentado: true });
-  }
+  if (jaSentou(nome)) await deleteDoc(ref);
+  else await setDoc(ref, { sentado: true });
 };
 
-/* ============================= BUSCA ============================= */
+/* =============================
+   BUSCA
+============================= */
 window.buscar = function () {
-  if (!senhaLiberada) return; // busca só funciona se senha liberada
+  if (!senhaAutorizada || document.getElementById("mesas").classList.contains("d-none")) return;
 
-  const termo = normalizar(
-    document.getElementById("searchInput").value.trim()
-  );
-
+  const termo = normalizar(document.getElementById("searchInput").value.trim());
   const resultado = document.getElementById("resultado");
   resultado.innerHTML = "";
 
@@ -68,13 +64,9 @@ window.buscar = function () {
     return;
   }
 
-  const encontrados = convidados.filter(c =>
-    normalizar(c.nome).includes(termo)
-  );
-
+  const encontrados = convidados.filter(c => normalizar(c.nome).includes(termo));
   if (!encontrados.length) {
-    resultado.innerHTML =
-      `<div class="alert alert-danger">Nenhum convidado encontrado</div>`;
+    resultado.innerHTML = `<div class="alert alert-danger">Nenhum convidado encontrado</div>`;
     return;
   }
 
@@ -85,22 +77,22 @@ window.buscar = function () {
   });
 };
 
-/* ============================= MOSTRAR TODAS AS MESAS ============================= */
+/* =============================
+   MOSTRAR TODAS AS MESAS
+============================= */
 function mostrarMesas() {
-  if (!senhaLiberada) return; // só mostra mesas com senha correta
-
   const resultado = document.getElementById("resultado");
   resultado.innerHTML = "";
 
   for (let mesa = 1; mesa <= 30; mesa++) {
     const pessoas = convidados.filter(c => c.mesa === mesa);
-    if (pessoas.length) {
-      resultado.innerHTML += renderMesa(mesa, pessoas);
-    }
+    if (pessoas.length) resultado.innerHTML += renderMesa(mesa, pessoas);
   }
 }
 
-/* ============================= RENDER MESA ============================= */
+/* =============================
+   RENDER MESA
+============================= */
 function renderMesa(mesa, pessoas, termo = "") {
   return `
     <div class="card mesa-card">
@@ -112,9 +104,7 @@ function renderMesa(mesa, pessoas, termo = "") {
             <li class="list-group-item d-flex align-items-center gap-2
               ${destaque ? "convidado-destaque" : termo ? "convidado-opaco" : ""} 
               ${jaSentou(p.nome) ? "sentado" : ""}">
-              <input type="checkbox" class="form-check-input" 
-                ${jaSentou(p.nome) ? "checked" : ""}
-                onchange="toggleSentado('${p.nome}')">
+              <input type="checkbox" class="form-check-input" ${jaSentou(p.nome) ? "checked" : ""} onchange="toggleSentado('${p.nome}')">
               <span>${p.nome}</span>
             </li>
           `;
@@ -124,14 +114,9 @@ function renderMesa(mesa, pessoas, termo = "") {
   `;
 }
 
-/* ============================= ATUALIZA TELA ============================= */
-function atualizarTela() {
-  if (!senhaLiberada) return;
-  const termo = document.getElementById("searchInput")?.value?.trim();
-  termo ? buscar() : mostrarMesas();
-}
-
-/* ============================= NAVEGAÇÃO ============================= */
+/* =============================
+   NAVEGAÇÃO
+============================= */
 function esconderTudo() {
   document.getElementById("home").classList.add("d-none");
   document.getElementById("cerimonia").classList.add("d-none");
@@ -140,23 +125,23 @@ function esconderTudo() {
   document.getElementById("btnVoltar").classList.add("d-none");
 }
 
+window.voltarHome = function () {
+  esconderTudo();
+  document.getElementById("home").classList.remove("d-none");
+  senhaAutorizada = false; // "desloga" a senha
+};
+
 window.mostrarCerimonia = function () {
-  senhaLiberada = false; // esquece a senha ao mudar de aba
   esconderTudo();
   document.getElementById("cerimonia").classList.remove("d-none");
   document.getElementById("btnVoltar").classList.remove("d-none");
-};
-
-window.voltarHome = function () {
-  senhaLiberada = false; // esquece a senha
-  esconderTudo();
-  document.getElementById("home").classList.remove("d-none");
+  senhaAutorizada = false; // ao ir para cerimonia, precisa pedir senha de novo para mesas
 };
 
 window.acessarMesas = function () {
   const senha = prompt("Área restrita – Digite a senha:");
   if (senha === SENHA_CERIMONIA) {
-    senhaLiberada = true;
+    senhaAutorizada = true;
     esconderTudo();
     document.getElementById("mesas").classList.remove("d-none");
     document.getElementById("areaBusca").classList.remove("d-none");
@@ -164,5 +149,6 @@ window.acessarMesas = function () {
     mostrarMesas();
   } else {
     alert("Senha incorreta.");
+    senhaAutorizada = false;
   }
 };
